@@ -3555,6 +3555,7 @@ static const int video_codec_caps[] = {
 static const char* parse_next_video_codec(const char *codecs, char **encoder,
                                           char **codec)
 {
+    size_t len;
     if (!codecs) {
         return NULL;
     }
@@ -3562,8 +3563,22 @@ static const char* parse_next_video_codec(const char *codecs, char **encoder,
     if (!*codecs) {
         return NULL;
     }
+    len = strcspn(codecs, ";");
     int n;
     *encoder = *codec = NULL;
+#if defined(__APPLE__)
+    char *aencoder = malloc(len);
+    char *acodec = malloc(len);
+    if (sscanf(codecs, "%[0-9a-zA-Z_]:%[0-9a-zA-Z_]%n", aencoder, acodec, &n) == 2) {
+        // this avoids accepting "encoder:codec" followed by garbage like "$%*"
+        if (codecs[n] != ';' && codecs[n] != '\0') {
+            free(acodec);
+            acodec = NULL;
+        }
+    }
+    *encoder = aencoder;
+    *codec = acodec;
+#else
     if (sscanf(codecs, "%m[0-9a-zA-Z_]:%m[0-9a-zA-Z_]%n", encoder, codec, &n) == 2) {
         // this avoids accepting "encoder:codec" followed by garbage like "$%*"
         if (codecs[n] != ';' && codecs[n] != '\0') {
@@ -3571,7 +3586,8 @@ static const char* parse_next_video_codec(const char *codecs, char **encoder,
             *codec = NULL;
         }
     }
-    return codecs + strcspn(codecs, ";");
+#endif
+    return codecs + len;
 }
 
 static void reds_set_video_codecs_from_string(RedsState *reds, const char *codecs)

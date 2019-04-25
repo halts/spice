@@ -1391,7 +1391,9 @@ bool red_worker_run(RedWorker *worker)
         spice_error("create thread failed %d", r);
     }
     pthread_sigmask(SIG_SETMASK, &curr_sig_mask, NULL);
+#if !defined(__APPLE__) // not supported
     pthread_setname_np(worker->thread, "SPICE Worker");
+#endif
 
     return r == 0;
 }

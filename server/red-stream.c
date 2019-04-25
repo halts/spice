@@ -39,7 +39,7 @@
 #include "reds.h"
 
 // compatibility for *BSD systems
-#ifndef TCP_CORK
+#if !defined(TCP_CORK) && !defined(__APPLE__)
 #define TCP_CORK TCP_NOPUSH
 #endif
 
@@ -100,6 +100,7 @@ struct RedStreamPrivate {
     SpiceCoreInterfaceInternal *core;
 };
 
+#if !defined(__APPLE__) // TCP_CORK doesn't exist and TCP_NOPUSH is broken
 /**
  * Set TCP_CORK on socket
  */
@@ -109,6 +110,7 @@ static int socket_set_cork(int socket, int enabled)
     SPICE_VERIFY(sizeof(enabled) == sizeof(int));
     return setsockopt(socket, IPPROTO_TCP, TCP_CORK, &enabled, sizeof(enabled));
 }
+#endif
 
 static ssize_t stream_write_cb(RedStream *s, const void *buf, size_t size)
 {
@@ -223,6 +225,7 @@ bool red_stream_write_all(RedStream *stream, const void *in_buf, size_t n)
 
 bool red_stream_set_auto_flush(RedStream *s, bool auto_flush)
 {
+#if !defined(__APPLE__)
     if (s->priv->use_cork == !auto_flush) {
         return true;
     }
@@ -239,15 +242,18 @@ bool red_stream_set_auto_flush(RedStream *s, bool auto_flush)
         socket_set_cork(s->socket, 0);
         s->priv->corked = false;
     }
+#endif
     return true;
 }
 
 void red_stream_flush(RedStream *s)
 {
+#if !defined(__APPLE__)
     if (s->priv->corked) {
         socket_set_cork(s->socket, 0);
         socket_set_cork(s->socket, 1);
     }
+#endif
 }
 
 #if HAVE_SASL
@@ -352,8 +358,16 @@ int red_stream_send_msgfd(RedStream *stream, int fd)
         memcpy(CMSG_DATA(cmsg), &fd, fd_size);
     }
 
+#if defined(__APPLE__)
+    int set = 1;
+    setsockopt(stream->socket, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
+#endif
     do {
+#if defined(__APPLE__)
+        r = sendmsg(stream->socket, &msgh, 0);
+#else
         r = sendmsg(stream->socket, &msgh, MSG_NOSIGNAL);
+#endif
     } while (r < 0 && (errno == EINTR || errno == EAGAIN));
 
     return r;
